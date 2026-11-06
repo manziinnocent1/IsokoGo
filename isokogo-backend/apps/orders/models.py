@@ -24,9 +24,7 @@ class Order(models.Model):
         on_delete=models.PROTECT,
         related_name="orders",
     )
-    # Live link to the customer's saved address. It may be edited or deleted later,
-    # which is why the snapshot below exists.
-    # Replace "addresses.Address" with your real app label and model name.
+    
     delivery_address = models.ForeignKey(
         "customers.CustomerAddress",
         on_delete=models.SET_NULL,
@@ -34,7 +32,7 @@ class Order(models.Model):
         blank=True,
         related_name="orders",
     )
-    # Copy of the address as it was when the order was placed
+
     delivery_address_snapshot = models.JSONField(default=dict)
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
