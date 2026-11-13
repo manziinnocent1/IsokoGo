@@ -11,10 +11,6 @@ from .models import CustomerProfile, CustomerAddress
 # ==========================================================
 
 class CustomerAddressInline(admin.TabularInline):
-    """
-    Display customer delivery addresses inside the profile page.
-    """
-
     model = CustomerAddress
     extra = 0
 
@@ -37,9 +33,6 @@ class CustomerAddressInline(admin.TabularInline):
 
 @admin.register(CustomerProfile)
 class CustomerProfileAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for customer profiles.
-    """
 
     list_display = (
         "id",
@@ -66,15 +59,10 @@ class CustomerProfileAdmin(admin.ModelAdmin):
         "preferred_language",
     )
 
-    ordering = (
-        "-created_at",
-    )
-
+    ordering = ("-created_at",)
     list_per_page = 25
 
-    autocomplete_fields = (
-        "user",
-    )
+    autocomplete_fields = ("user",)
 
     readonly_fields = (
         "id",
@@ -84,9 +72,7 @@ class CustomerProfileAdmin(admin.ModelAdmin):
         "total_addresses",
     )
 
-    inlines = (
-        CustomerAddressInline,
-    )
+    inlines = (CustomerAddressInline,)
 
     fieldsets = (
         (
@@ -105,9 +91,7 @@ class CustomerProfileAdmin(admin.ModelAdmin):
         (
             "Customer Statistics",
             {
-                "fields": (
-                    "total_addresses",
-                ),
+                "fields": ("total_addresses",),
             },
         ),
         (
@@ -124,9 +108,7 @@ class CustomerProfileAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
 
-        return queryset.select_related(
-            "user"
-        ).annotate(
+        return queryset.select_related("user").annotate(
             address_count=Count("addresses", distinct=True)
         )
 
@@ -144,7 +126,7 @@ class CustomerProfileAdmin(admin.ModelAdmin):
 
     @admin.display(description="Total Addresses", ordering="address_count")
     def total_addresses(self, obj):
-        return obj.address_count
+        return getattr(obj, "address_count", 0)
 
     @admin.display(description="Profile Image")
     def profile_image_preview(self, obj):
@@ -164,11 +146,9 @@ class CustomerProfileAdmin(admin.ModelAdmin):
 
 @admin.register(CustomerAddress)
 class CustomerAddressAdmin(admin.ModelAdmin):
-    """
-    Admin configuration for customer delivery addresses.
-    """
 
     list_display = (
+        "id",
         "address_name",
         "customer_email",
         "recipient_name",
@@ -177,7 +157,7 @@ class CustomerAddressAdmin(admin.ModelAdmin):
         "district",
         "sector",
         "default_status",
-        "active_status",
+        "is_active",  # FIX: is_active is now in list_display
         "created_at",
     )
 
@@ -205,16 +185,13 @@ class CustomerAddressAdmin(admin.ModelAdmin):
         "street_address",
     )
 
-    autocomplete_fields = (
-        "customer",
-    )
+    autocomplete_fields = ("customer",)
 
-    ordering = (
-        "-created_at",
-    )
-
+    ordering = ("-created_at",)
     list_per_page = 25
 
+    # Every editable field must be in list_display.
+    # It must not be the first list_display column.
     list_editable = (
         "is_active",
     )
@@ -303,17 +280,6 @@ class CustomerAddressAdmin(admin.ModelAdmin):
 
         return "No"
 
-    @admin.display(description="Active Status")
-    def active_status(self, obj):
-        if obj.is_active:
-            return format_html(
-                '<span style="color:green; font-weight:bold;">Active</span>'
-            )
-
-        return format_html(
-            '<span style="color:red; font-weight:bold;">Inactive</span>'
-        )
-
     @admin.display(description="Map Coordinates")
     def map_coordinates(self, obj):
         if obj.latitude is not None and obj.longitude is not None:
@@ -341,10 +307,6 @@ class CustomerAddressAdmin(admin.ModelAdmin):
 
     @admin.action(description="Mark selected addresses as default")
     def mark_as_default(self, request, queryset):
-        """
-        Set one default address per customer.
-        Process each customer separately.
-        """
 
         customer_ids = queryset.values_list(
             "customer_id",
@@ -374,7 +336,9 @@ class CustomerAddressAdmin(admin.ModelAdmin):
             )
 
             selected_address.is_default = True
-            selected_address.save(update_fields=["is_default", "updated_at"])
+            selected_address.save(
+                update_fields=["is_default", "updated_at"]
+            )
 
             updated += 1
 

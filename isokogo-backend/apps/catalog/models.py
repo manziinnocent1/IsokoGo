@@ -1,13 +1,19 @@
+
 import uuid
 
 from django.db import models
 
+
+# ==========================================================
+# CATEGORY
+# ==========================================================
 
 class Category(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField(null=True, blank=True)
+
     parent = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,
@@ -15,9 +21,16 @@ class Category(models.Model):
         blank=True,
         related_name="subcategories",
     )
-    image = models.ImageField(upload_to="category_images/", null=True, blank=True)
+
+    image = models.ImageField(
+        upload_to="category_images/",
+        null=True,
+        blank=True,
+    )
+
     is_active = models.BooleanField(default=True)
     display_order = models.IntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -31,12 +44,23 @@ class Category(models.Model):
         return self.name
 
 
+# ==========================================================
+# BRAND
+# ==========================================================
+
 class Brand(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
-    logo = models.ImageField(upload_to="brand_logos/", null=True, blank=True)
+
+    logo = models.ImageField(
+        upload_to="brand_logos/",
+        null=True,
+        blank=True,
+    )
+
     is_active = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -49,15 +73,36 @@ class Brand(models.Model):
         return self.name
 
 
+# ==========================================================
+# PRODUCT
+# ==========================================================
+
 class Product(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
     sku = models.CharField(max_length=100, unique=True)
-    barcode = models.CharField(max_length=100, unique=True, null=True, blank=True)
+
+    barcode = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+    )
+
     description = models.TextField(null=True, blank=True)
-    # PROTECT: deleting a category must not silently delete all its products
-    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
+
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="products",
+    )
+
     brand = models.ForeignKey(
         Brand,
         on_delete=models.SET_NULL,
@@ -65,16 +110,49 @@ class Product(models.Model):
         null=True,
         blank=True,
     )
-    vendor = models.ForeignKey("vendors.Vendor", on_delete=models.CASCADE, related_name="products")
-    base_price = models.DecimalField(max_digits=10, decimal_places=2)
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    unit = models.CharField(max_length=50, null=True, blank=True)
-    weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    vendor = models.ForeignKey(
+        "vendors.Vendor",
+        on_delete=models.CASCADE,
+        related_name="products",
+    )
+
+    base_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    cost_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    unit = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+    )
+
+    weight = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
     is_available = models.BooleanField(default=True)
     is_featured = models.BooleanField(default=False)
     is_perishable = models.BooleanField(default=False)
-    shelf_life_days = models.IntegerField(null=True, blank=True)
+
+    shelf_life_days = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
     requires_refrigeration = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -87,20 +165,52 @@ class Product(models.Model):
         return self.name
 
 
+# ==========================================================
+# PRODUCT VARIANT
+# ==========================================================
+
 class ProductVariant(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
         related_name="variants",
     )
+
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=100, unique=True)
-    barcode = models.CharField(max_length=100, unique=True, null=True, blank=True)
-    size_value = models.DecimalField(max_digits=10, decimal_places=2)
+
+    barcode = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+    )
+
+    size_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
     size_unit = models.CharField(max_length=50)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2)
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    selling_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+    )
+
+    cost_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -112,16 +222,27 @@ class ProductVariant(models.Model):
         return f"{self.product.name} - {self.name}"
 
 
+# ==========================================================
+# PRODUCT IMAGE
+# ==========================================================
+
 class ProductImage(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
         related_name="images",
     )
+
     image = models.ImageField(upload_to="product_images/")
     alt_text = models.CharField(max_length=255, blank=True)
     is_primary = models.BooleanField(default=False)
+
     display_order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -129,8 +250,8 @@ class ProductImage(models.Model):
         verbose_name = "Product Image"
         verbose_name_plural = "Product Images"
         ordering = ["display_order"]
+
         constraints = [
-            # At most one primary image per product
             models.UniqueConstraint(
                 fields=["product"],
                 condition=models.Q(is_primary=True),
@@ -142,10 +263,19 @@ class ProductImage(models.Model):
         return f"Image for {self.product_id}"
 
 
-class ProductAttribute(models.Model):
-    """An attribute type, e.g. 'Color', 'Origin', 'Grade'."""
+# ==========================================================
+# PRODUCT ATTRIBUTE
+# ==========================================================
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ProductAttribute(models.Model):
+    """An attribute type, e.g. Color, Origin, or Grade."""
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
 
@@ -158,26 +288,38 @@ class ProductAttribute(models.Model):
         return self.name
 
 
-class ProductAttributeValue(models.Model):
-    """The value of an attribute for one product, e.g. Color = 'Red'."""
+# ==========================================================
+# PRODUCT ATTRIBUTE VALUE
+# ==========================================================
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ProductAttributeValue(models.Model):
+    """An attribute value assigned to a product."""
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
         related_name="attribute_values",
     )
+
     attribute = models.ForeignKey(
         ProductAttribute,
         on_delete=models.CASCADE,
         related_name="values",
     )
+
     value = models.CharField(max_length=255)
 
     class Meta:
         db_table = "product_attribute_values"
         verbose_name = "Product Attribute Value"
         verbose_name_plural = "Product Attribute Values"
+
         constraints = [
             models.UniqueConstraint(
                 fields=["product", "attribute"],
