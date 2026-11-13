@@ -1,6 +1,10 @@
 import secrets
 from datetime import timedelta
 
+from rest_framework.generics import GenericAPIView
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
@@ -17,7 +21,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import extend_schema
 
+from .serializers import (
+    AdminUserUpdateSerializer,
+    ChangePasswordSerializer,
+    LoginSerializer,
+    LogoutSerializer,
+    ProfileUpdateSerializer,
+    RegisterSerializer,
+    SendVerificationCodeSerializer,
+    UserListQuerySerializer,
+    VerifyCodeSerializer,
+)
 from .models import UserVerification
 
 User = get_user_model()
@@ -91,67 +107,77 @@ class IsAdminRole(BasePermission):
 # ---------------------------------------------------------------------------
 # Auth views
 # ---------------------------------------------------------------------------
-class RegisterView(APIView):
+
+class RegisterView(GenericAPIView):
+    """
+    Register a new IsokoGo customer account.
+
+    Accepts JSON registration data and returns the created user.
+    """
+
+    serializer_class = RegisterSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
 
-    def post(self, request):
-        data = request.data
-        required = ["email", "phone_number", "first_name", "last_name", "password"]
-        missing = [f for f in required if not data.get(f)]
-        if missing:
-            return error("Missing required fields.", fields=missing)
+    @extend_schema(
+        operation_id="accounts_register",
+        summary="Register a new account",
+        description=(
+            "Create a new customer account using email, phone number, "
+            "first name, last name and password. A verification code "
+            "will be generated after successful registration."
+        ),
+        request=RegisterSerializer,
+        responses={
+            201: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            409: OpenApiTypes.OBJECT,
+        },
+    )
+    def post(self, request, *args, **kwargs):
 
-        email = data["email"].strip().lower()
-        try:
-            validate_email(email)
-        except ValidationError:
-            return error("Invalid email address.")
-
-        phone_number = data["phone_number"].strip()
-        candidate = User(
-            email=email,
-            phone_number=phone_number,
-            first_name=data["first_name"].strip(),
-            last_name=data["last_name"].strip(),
-        )
-        try:
-            validate_password(data["password"], user=candidate)
-        except ValidationError as exc:
-            return error("Password is too weak.", errors=list(exc.messages))
-
-        if User.objects.filter(email=email).exists():
-            return error("Email already registered.", status.HTTP_409_CONFLICT)
-        if User.objects.filter(phone_number=phone_number).exists():
-            return error("Phone number already registered.", status.HTTP_409_CONFLICT)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
         try:
             with transaction.atomic():
-                # `role` is deliberately not read from the request body.
-                user = User.objects.create_user(
-                    email=email,
-                    password=data["password"],
-                    phone_number=phone_number,
-                    first_name=candidate.first_name,
-                    last_name=candidate.last_name,
-                )
+                # The serializer creates the user securely.
+                user = serializer.save()
+
+                # Generate an email verification code.
                 create_verification(user, "email")
+
         except IntegrityError:
-            return error("User already exists.", status.HTTP_409_CONFLICT)
+            return error(
+                "Email or phone number already registered.",
+                status.HTTP_409_CONFLICT,
+            )
 
         return Response(
             {
-                "message": "Registered. A verification code has been sent.",
+                "message": (
+                    "Registered successfully. "
+                    "A verification code has been sent."
+                ),
                 "user": serialize_user(user),
             },
             status=status.HTTP_201_CREATED,
         )
 
 
+
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=LoginSerializer,
+        operation_id="accounts_login",
+                summary="Login User",
+                description=(
+                    "Login user with email and password "
+                )
+                )
     def post(self, request):
         email = (request.data.get("email") or "").strip().lower()
         password = request.data.get("password") or ""
@@ -170,23 +196,64 @@ class LoginView(APIView):
         return Response({"tokens": get_tokens_for_user(user), "user": serialize_user(user)})
 
 
+
+
 class LogoutView(APIView):
     """
-    Blacklists the refresh token. Requires 'rest_framework_simplejwt.token_blacklist'
-    in INSTALLED_APPS (and `python manage.py migrate`).
+    Logout the authenticated user by blacklisting the refresh token.
+    Returns a JSON success message.
     """
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        operation_id="accounts_logout",
+        summary="Logout user",
+        description="Logout an authenticated user using their refresh token.",
+        request=LogoutSerializer,
+        responses={
+            200: OpenApiResponse(
+                response={
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "example": "User logged out successfully.",
+                        }
+                    },
+                },
+                description="User logged out successfully.",
+            ),
+            400: OpenApiResponse(
+                description="Refresh token is missing, invalid or expired."
+            ),
+            401: OpenApiResponse(
+                description="Authentication credentials are missing or invalid."
+            ),
+        },
+    )
     def post(self, request):
-        refresh = request.data.get("refresh")
-        if not refresh:
-            return error("refresh token is required.")
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        refresh_token = serializer.validated_data["refresh"]
+
         try:
-            RefreshToken(refresh).blacklist()
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
         except TokenError:
-            return error("Invalid or expired token.")
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            return error(
+                "Invalid or expired refresh token.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "message": "User logged out successfully."
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +262,11 @@ class LogoutView(APIView):
 class SendVerificationCodeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        operation_id="accounts_verificationcode",
+        summary="verification code",
+        description="verification code.",
+        request=SendVerificationCodeSerializer)
     def post(self, request):
         verification_type = request.data.get("verification_type", "email")
         if verification_type not in VERIFICATION_TYPES:
@@ -216,6 +288,7 @@ class SendVerificationCodeView(APIView):
 class VerifyCodeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=VerifyCodeSerializer)
     def post(self, request):
         verification_type = request.data.get("verification_type", "email")
         code = str(request.data.get("code", "")).strip()
@@ -256,6 +329,7 @@ class ProfileView(APIView):
     def get(self, request):
         return Response(serialize_user(request.user))
 
+    @extend_schema(request=ProfileUpdateSerializer)
     def patch(self, request):
         user = request.user
         changed = []
@@ -283,6 +357,7 @@ class ProfileView(APIView):
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(request=ChangePasswordSerializer)
     def post(self, request):
         old_password = request.data.get("old_password") or ""
         new_password = request.data.get("new_password") or ""
@@ -305,6 +380,7 @@ class ChangePasswordView(APIView):
 class UserListView(APIView):
     permission_classes = [IsAdminRole]
 
+    @extend_schema(parameters=[UserListQuerySerializer])
     def get(self, request):
         qs = User.objects.all().order_by("-date_joined")
 
@@ -343,35 +419,47 @@ class UserDetailView(APIView):
     def get(self, request, pk):
         return Response(serialize_user(get_object_or_404(User, pk=pk)))
 
-    def patch(self, request, pk):
-        user = get_object_or_404(User, pk=pk)
-        is_self = user.pk == request.user.pk
-        changed = []
-
-        role = request.data.get("role")
-        if role is not None:
-            if role not in dict(User.ROLE_CHOICES):
-                return error("Invalid role.")
-            if is_self and role != user.role:
-                return error("You cannot change your own role.")
-            user.role = role
-            changed.append("role")
-
-        for flag in ("is_active", "is_verified"):
-            if flag in request.data:
-                value = bool(request.data[flag])
-                if is_self and flag == "is_active" and not value:
-                    return error("You cannot deactivate your own account.")
-                setattr(user, flag, value)
-                changed.append(flag)
-
-        if changed:
-            user.save(update_fields=changed + ["updated_at"])
-        return Response(serialize_user(user))
-
+    
+    @extend_schema(
+        operation_id="accounts_delete_user",
+        summary="Delete user",
+        description="Delete a user account by ID.",
+        responses={
+            200: OpenApiResponse(
+                response={
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "example": "User deleted successfully.",
+                        },
+                        "user_id": {
+                            "type": "integer",
+                            "example": 12,
+                        },
+                    },
+                },
+                description="User deleted successfully.",
+            ),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Permission denied."),
+            404: OpenApiResponse(description="User not found."),
+        },
+    )
     def delete(self, request, pk):
         user = get_object_or_404(User, pk=pk)
+
         if user.pk == request.user.pk:
             return error("You cannot delete your own account.")
+
+        deleted_user_id = user.pk
+
         user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+
+        return Response(
+            {
+                "message": "User deleted successfully.",
+                "user_id": deleted_user_id,
+            },
+            status=status.HTTP_200_OK,
+        )
